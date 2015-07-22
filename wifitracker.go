@@ -7,12 +7,12 @@ import (
 	"os"
 	"sync"
 	"time"
+	"runtime"
 )
 
 const jsonTimeFmt string = "2006-01-02 15:04:05.000000"
 
 const pipelineBuffers int = 100000
-
 
 // A Set is a unordered collection of unique string elements.
 type Set struct {
@@ -70,9 +70,6 @@ type Device struct {
 	VendorCountry string
 }
 
-
-
-
 func readRequestJSONs(requestFilePath string) <-chan []byte {
 	out := make(chan []byte, pipelineBuffers)
 
@@ -114,6 +111,9 @@ func detectDevices(in <-chan *Request, devices map[string]Device, devicesMutex *
 	go func() {
 		defer close(done)
 		for request := range in {
+			if len(in) >= pipelineBuffers - 10{
+				fmt.Println("request buffer full")
+			}
 			devicesMutex.Lock()
 			if device, exists := devices[request.SourceMac]; exists {
 				if device.LastSeenDts.Time.Before(request.CaptureDts.Time) {
@@ -135,15 +135,50 @@ func detectDevices(in <-chan *Request, devices map[string]Device, devicesMutex *
 	}()
 	return done
 }
+
+func merge(cs ...<-chan *Request) <-chan *Request {
+	var wg sync.WaitGroup
+	out := make(chan *Request, pipelineBuffers)
+
+	// Start an output goroutine for each input channel in cs.  output
+	// copies values from c to out until c is closed, then calls wg.Done.
+	output := func(c <-chan *Request) {
+		for n := range c {
+			out <- n
+		}
+		wg.Done()
+	}
+	wg.Add(len(cs))
+	for _, c := range cs {
+		go output(c)
+	}
+
+	// Start a goroutine to close out once all the output goroutines are
+	// done.  This must start after the wg.Add call.
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return out
+}
+
 func main() {
 	const requestFilePath string = "/var/opt/wifi-tracker/requests"
+
+	// init runtime:
+	numCPU := runtime.NumCPU()
+	runtime.GOMAXPROCS(numCPU)
 
 	devices := make(map[string]Device)
 	devicesMutex := &sync.Mutex{}
 
 	requestJSONs := readRequestJSONs(requestFilePath)
-	requests := parseRequestJSONs(requestJSONs)
-	finished := detectDevices(requests, devices, devicesMutex)
+	var requestParsers []<-chan *Request
+	for i := 0; i < numCPU; i++ {
+		requests := parseRequestJSONs(requestJSONs)
+		requestParsers = append(requestParsers, requests)
+	}
+	finished := detectDevices(merge(requestParsers...), devices, devicesMutex)
 	<-finished
 	fmt.Println(len(devices))
 
