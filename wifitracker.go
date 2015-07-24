@@ -11,7 +11,6 @@ import (
 )
 
 const jsonTimeFmt string = "2006-01-02 15:04:05.000000"
-
 const bufferFactor int = 100
 
 // A Set is a unordered collection of unique string elements.
@@ -29,9 +28,11 @@ func (s *Set) Add(element string) {
 	}
 }
 
+// MarshalJSON returns the JSON encoding of the Set.
+// The Set is converted to a JSON Array, and empty strings are ignored.
 func (s *Set) MarshalJSON() ([]byte, error) {
 	elements := make([]string, 0, len(s.set))
-	for element, _ := range s.set {
+	for element := range s.set {
 		if element != "" {
 			elements = append(elements, element)
 		}
@@ -83,6 +84,12 @@ type Device struct {
 	VendorCountry *string
 }
 
+// A Station struct represents an IEEE 802.11 access point.
+type Station struct {
+	SSID         string
+	KnownDevices *Set
+}
+
 func readRequestJSONs(requestFilePath string) <-chan []byte {
 	out := make(chan []byte, runtime.NumCPU()*100)
 
@@ -118,14 +125,43 @@ func parseRequestJSONs(in <-chan []byte) <-chan *Request {
 	return out
 }
 
-func detectDevices(in <-chan *Request, devices map[string]Device, devicesMutex *sync.Mutex) <-chan bool {
+func aggregateStations(in <-chan *Request, stations map[string]interface{}, stationsMutex *sync.Mutex) <-chan bool {
+	done := make(chan bool)
+
+	go func() {
+		defer close(done)
+		for request := range in {
+			if request.TargetSsid == "" {
+				continue
+			}
+			stationsMutex.Lock()
+			if stationI, exists := stations[request.TargetSsid]; exists {
+				station, _ := stationI.(Station)
+				station.KnownDevices.Add(request.SourceMac)
+			} else {
+				station := Station{
+					SSID:         request.TargetSsid,
+					KnownDevices: &Set{},
+				}
+				station.KnownDevices.Add(request.SourceMac)
+				stations[request.TargetSsid] = station
+			}
+			stationsMutex.Unlock()
+		}
+		done <- true
+	}()
+	return done
+}
+
+func aggregateDevices(in <-chan *Request, devices map[string]interface{}, devicesMutex *sync.Mutex) <-chan bool {
 	done := make(chan bool)
 
 	go func() {
 		defer close(done)
 		for request := range in {
 			devicesMutex.Lock()
-			if device, exists := devices[request.SourceMac]; exists {
+			if deviceI, exists := devices[request.SourceMac]; exists {
+				device, _ := deviceI.(Device)
 				if device.LastSeenDts.Time.Before(request.CaptureDts.Time) {
 					device.LastSeenDts = request.CaptureDts
 				}
@@ -148,7 +184,7 @@ func detectDevices(in <-chan *Request, devices map[string]Device, devicesMutex *
 
 func merge(cs ...<-chan *Request) <-chan *Request {
 	var wg sync.WaitGroup
-	out := make(chan *Request, bufferFactor * runtime.NumCPU())
+	out := make(chan *Request, bufferFactor*runtime.NumCPU())
 
 	// Start an output goroutine for each input channel in cs.  output
 	// copies values from c to out until c is closed, then calls wg.Done.
@@ -174,12 +210,13 @@ func merge(cs ...<-chan *Request) <-chan *Request {
 
 func main() {
 	const requestFilePath string = "/var/opt/wifi-tracker/requests"
+	showType := "devices"
+	if len(os.Args) > 1{
+		showType = os.Args[1]
+	}
 
 	// init runtime:
 	runtime.GOMAXPROCS(runtime.NumCPU())
-
-	devices := make(map[string]Device)
-	devicesMutex := &sync.Mutex{}
 
 	requestJSONs := readRequestJSONs(requestFilePath)
 	var requestParsers []<-chan *Request
@@ -187,14 +224,30 @@ func main() {
 		requests := parseRequestJSONs(requestJSONs)
 		requestParsers = append(requestParsers, requests)
 	}
-	finished := detectDevices(merge(requestParsers...), devices, devicesMutex)
-	<-finished
-	for _, device := range devices {
 
-		deviceJSON, err := json.Marshal(device)
+	entities := make(map[string]interface{})
+	entitiesMutex := &sync.Mutex{}
+
+
+	var done <-chan bool
+	switch showType {
+	case "devices":
+		done = aggregateDevices(merge(requestParsers...), entities, entitiesMutex)
+		<-done
+	case "stations":
+		done = aggregateStations(merge(requestParsers...), entities, entitiesMutex)
+		<-done
+	}
+	printEntities(entities)
+}
+
+func printEntities(entities map[string]interface{}){
+	for _, entity := range  entities{
+
+		entityJSON, err := json.MarshalIndent(entity, "", "  ")
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(string(deviceJSON))
+		fmt.Println(string(entityJSON))
 	}
 }
