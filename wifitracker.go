@@ -1,3 +1,19 @@
+// wifitracker
+// Copyright (C) 2015 David Url
+//
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License along
+// with this program; if not, write to the Free Software Foundation, Inc.,
+// 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 package main
 
 import (
@@ -211,7 +227,7 @@ func merge(cs ...<-chan *Request) <-chan *Request {
 func main() {
 	const requestFilePath string = "/var/opt/wifi-tracker/requests"
 	showType := "devices"
-	if len(os.Args) > 1{
+	if len(os.Args) > 1 {
 		showType = os.Args[1]
 	}
 
@@ -228,7 +244,6 @@ func main() {
 	entities := make(map[string]interface{})
 	entitiesMutex := &sync.Mutex{}
 
-
 	var done <-chan bool
 	switch showType {
 	case "devices":
@@ -241,8 +256,8 @@ func main() {
 	printEntities(entities)
 }
 
-func printEntities(entities map[string]interface{}){
-	for _, entity := range  entities{
+func printEntities(entities map[string]interface{}) {
+	for _, entity := range entities {
 
 		entityJSON, err := json.MarshalIndent(entity, "", "  ")
 		if err != nil {
