@@ -115,3 +115,4 @@ Temporary Items
 .Trash-*
 
 bin/
+gopath/
