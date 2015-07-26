@@ -21,14 +21,14 @@ if [[ $DOCKER_STATUS -ne 0 ]] || [[ $KERNEL != Linux ]]; then
         # get dependencies:
         go get $(go list -f "{{range .Imports}}{{ .  }} {{end}}")
         # build static binary:
-        CGO_ENABLED=0 go build -a -installsuffix cgo -ldflags "-s" -o bin/wifitracker ${REPO_PATH}
+        CGO_ENABLED=0 go build -x -v -a -installsuffix cgo -ldflags "-s" -o bin/wifitracker ${REPO_PATH}
 else
         echo "docker available. building in container..."
         ARCH=$(uname -m)
         if [[ $ARCH == arm*  ]]; then
-                docker run -it -v $(pwd):$(pwd) -w $(pwd) hypriot/rpi-golang:1.4.2 /bin/bash -c $(pwd)/build.sh
+                docker run --rm -it -v $(pwd):$(pwd) -w $(pwd) hypriot/rpi-golang:1.4.2 /bin/bash -c $(pwd)/build.sh
         else
-                docker run -it -v $(pwd):$(pwd) -w $(pwd) golang:1.4.2 /bin/bash -c $(pwd)/build.sh
+                docker run --rm -it -v $(pwd):$(pwd) -w $(pwd) golang:1.4.2 /bin/bash -c $(pwd)/build.sh
         fi
 fi
 
