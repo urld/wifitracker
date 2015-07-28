@@ -22,6 +22,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 	"os"
 	"runtime"
 	"sync"
@@ -226,6 +229,71 @@ func merge(cs ...<-chan *Request) <-chan *Request {
 	return out
 }
 
+func sniff(iface string) {
+	handle, err := pcap.OpenLive(iface, 1600, true, 0)
+	if err != nil {
+		panic(err)
+	}
+	err = handle.SetBPFFilter("type mgt subtype probe-req")
+	if err != nil {
+		panic(err)
+	}
+	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	for packet := range packetSource.Packets() {
+		handlePacket(packet) // Do something with a packet here.
+	}
+}
+
+func handlePacket(packet gopacket.Packet) {
+	probeRequest := ProbeRequest{}
+	if l1 := packet.Layer(layers.LayerTypeDot11); l1 != nil {
+		dot11, _ := l1.(*layers.Dot11)
+		probeRequest.MAC = dot11.Address2.String()
+		if l2 := packet.Layer(layers.LayerTypeDot11MgmtProbeReq); l2 != nil {
+			dot11p, _ := l2.(*layers.Dot11MgmtProbeReq)
+			probeRequest.decodeProbeRequestLayer(dot11p)
+			if l1 := packet.Layer(layers.LayerTypeRadioTap); l1 != nil {
+				dot11r, _ := l1.(*layers.RadioTap)
+				probeRequest.RSSI = dot11r.DBMAntennaSignal
+			}
+			fmt.Println(probeRequest)
+		}
+	}
+}
+
+type ProbeRequest struct {
+	MAC  string
+	SSID string
+	RSSI int8
+	VendorSpecific []byte
+}
+
+func (pr *ProbeRequest)decodeProbeRequestLayer(probeLayer *layers.Dot11MgmtProbeReq) {
+	var body []byte
+	body = probeLayer.LayerContents()
+	for i := uint64(0); i < uint64(len(body)); {
+		id := layers.Dot11InformationElementID(body[i])
+		i++
+		switch id{
+		case layers.Dot11InformationElementIDSSID:
+			elemLen := uint64(body[i])
+			i++
+			if elemLen > 0 {
+				pr.SSID = string(body[i : i+elemLen])
+				i += elemLen
+			}
+			break
+		case layers.Dot11InformationElementIDVendor:
+			pr.VendorSpecific = body[i+1:]
+			return
+		default:
+			elemLen := uint64(body[i])
+			i += 1+elemLen
+			break
+		}
+	}
+}
+
 func main() {
 	const requestFilePath string = "/var/opt/wifi-tracker/requests"
 	showType := "devices"
@@ -254,6 +322,8 @@ func main() {
 	case "stations":
 		done = aggregateStations(merge(requestParsers...), entities, entitiesMutex)
 		<-done
+	case "sniff":
+		sniff("wlan1")
 	}
 	printEntities(entities)
 }

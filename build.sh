@@ -20,8 +20,8 @@ if [[ $DOCKER_STATUS -ne 0 ]] || [[ $KERNEL != Linux ]]; then
 
         # get dependencies:
         go get $(go list -f "{{range .Imports}}{{ .  }} {{end}}")
-        # build static binary:
-        CGO_ENABLED=0 go build -x -v -a -installsuffix cgo -ldflags "-s" -o bin/wifitracker ${REPO_PATH}
+        # build binary:
+        CGO_ENABLED=1 go build -x -v -a -o bin/wifitracker ${REPO_PATH}
 else
         echo "docker available. building in container..."
         ARCH=$(uname -m)
