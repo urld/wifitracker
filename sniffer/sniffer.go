@@ -1,4 +1,4 @@
-package main
+package sniffer
 
 import (
 	"fmt"
@@ -60,7 +60,7 @@ func handlePacket(packet gopacket.Packet) {
 	}
 }
 
-func sniff(iface string) {
+func Sniff(iface string) {
 	handle, err := pcap.OpenLive(iface, 1600, true, 0)
 	if err != nil {
 		panic(err)

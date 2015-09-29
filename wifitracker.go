@@ -21,40 +21,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"runtime"
-	"sync"
 	"github.com/docopt/docopt-go"
+	"github.com/durl/go-wifi-tracker/sniffer"
+	"github.com/durl/go-wifi-tracker/tracker"
+	"os"
 )
 
 const Version string = "0.1.0"
 const requestFilePath string = "/var/opt/wifi-tracker/requests"
-
-func merge(cs ...<-chan *Request) <-chan *Request {
-	var wg sync.WaitGroup
-	out := make(chan *Request, bufferFactor*runtime.NumCPU())
-
-	// Start an output goroutine for each input channel in cs.  output
-	// copies values from c to out until c is closed, then calls wg.Done.
-	output := func(c <-chan *Request) {
-		for n := range c {
-			out <- n
-		}
-		wg.Done()
-	}
-	wg.Add(len(cs))
-	for _, c := range cs {
-		go output(c)
-	}
-
-	// Start a goroutine to close out once all the output goroutines are
-	// done.  This must start after the wg.Add call.
-	go func() {
-		wg.Wait()
-		close(out)
-	}()
-	return out
-}
 
 func printEntities(entities map[string]interface{}) {
 	for _, entity := range entities {
@@ -68,8 +42,6 @@ func printEntities(entities map[string]interface{}) {
 }
 
 func main() {
-	// init runtime:
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	usage := `wifi-tracker: Track wifi devices in your area.
 
 Usage:
@@ -101,30 +73,18 @@ Commands:
 
 	// read arguments:
 	if args["show"].(bool) {
-		requestJSONs := readRequestJSONs(requestFilePath)
-		var requestParsers []<-chan *Request
-		for i := 0; i < runtime.NumCPU(); i++ {
-			requests := parseRequestJSONs(requestJSONs)
-			requestParsers = append(requestParsers, requests)
-		}
-
-		entities := make(map[string]interface{})
-		entitiesMutex := &sync.Mutex{}
-
-		var done <-chan bool
 		if args["devices"].(bool) {
-			done = aggregateDevices(merge(requestParsers...), entities, entitiesMutex)
-			<-done
+			devices := tracker.AggregateDevices(requestFilePath)
+			printEntities(devices)
 		} else if args["stations"].(bool) {
-			done = aggregateStations(merge(requestParsers...), entities, entitiesMutex)
-			<-done
-		} else if args["aliases"].(bool){
+			stations := tracker.AggregateStations(requestFilePath)
+			printEntities(stations)
+		} else if args["aliases"].(bool) {
 			fmt.Println("not implemented")
 			os.Exit(2)
 		}
-		printEntities(entities)
-	} else if args["sniff"].(bool){
-		sniff(args["<interface>"].(string))
+	} else if args["sniff"].(bool) {
+		sniffer.Sniff(args["<interface>"].(string))
 	} else {
 		fmt.Println("not implemented")
 		os.Exit(2)

@@ -1,4 +1,4 @@
-package main
+package tracker
 
 import (
 	"bufio"
@@ -93,7 +93,10 @@ func readRequestJSONs(requestFilePath string) <-chan []byte {
 	out := make(chan []byte, runtime.NumCPU()*100)
 
 	go func() {
-		f, _ := os.Open(requestFilePath)
+		f, err := os.Open(requestFilePath)
+		if err != nil {
+			return
+		}
 		defer f.Close()
 		defer close(out)
 		scanner := bufio.NewScanner(f)
@@ -124,59 +127,89 @@ func parseRequestJSONs(in <-chan []byte) <-chan *Request {
 	return out
 }
 
-func aggregateStations(in <-chan *Request, stations map[string]interface{}, stationsMutex *sync.Mutex) <-chan bool {
-	done := make(chan bool)
+func merge(cs ...<-chan *Request) <-chan *Request {
+	var wg sync.WaitGroup
+	out := make(chan *Request, bufferFactor*runtime.NumCPU())
 
-	go func() {
-		defer close(done)
-		for request := range in {
-			if request.TargetSsid == "" {
-				continue
-			}
-			stationsMutex.Lock()
-			if stationI, exists := stations[request.TargetSsid]; exists {
-				station, _ := stationI.(Station)
-				station.KnownDevices.Add(request.SourceMac)
-			} else {
-				station := Station{
-					SSID:         request.TargetSsid,
-					KnownDevices: &Set{},
-				}
-				station.KnownDevices.Add(request.SourceMac)
-				stations[request.TargetSsid] = station
-			}
-			stationsMutex.Unlock()
+	// Start an output goroutine for each input channel in cs.  output
+	// copies values from c to out until c is closed, then calls wg.Done.
+	output := func(c <-chan *Request) {
+		for n := range c {
+			out <- n
 		}
-		done <- true
+		wg.Done()
+	}
+	wg.Add(len(cs))
+	for _, c := range cs {
+		go output(c)
+	}
+
+	// Start a goroutine to close out once all the output goroutines are
+	// done.  This must start after the wg.Add call.
+	go func() {
+		wg.Wait()
+		close(out)
 	}()
-	return done
+	return out
 }
 
-func aggregateDevices(in <-chan *Request, devices map[string]interface{}, devicesMutex *sync.Mutex) <-chan bool {
-	done := make(chan bool)
+func ParseRequests(requestFilePath string) <-chan *Request {
+	requestJSONs := readRequestJSONs(requestFilePath)
+	var requestParsers []<-chan *Request
+	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
+		requests := parseRequestJSONs(requestJSONs)
+		requestParsers = append(requestParsers, requests)
+	}
+	return merge(requestParsers...)
+}
 
-	go func() {
-		defer close(done)
-		for request := range in {
-			devicesMutex.Lock()
-			if deviceI, exists := devices[request.SourceMac]; exists {
-				device, _ := deviceI.(Device)
-				if device.LastSeenDts.Time.Before(request.CaptureDts.Time) {
-					device.LastSeenDts = request.CaptureDts
-				}
-				device.KnownSsids.Add(request.TargetSsid)
-			} else {
-				device := Device{
-					DeviceMac:   request.SourceMac,
-					LastSeenDts: request.CaptureDts,
-					KnownSsids:  &Set{},
-				}
-				device.KnownSsids.Add(request.TargetSsid)
-				devices[request.SourceMac] = device
-			}
-			devicesMutex.Unlock()
+func AggregateStations(requestFilePath string) map[string]interface{} {
+	in := ParseRequests(requestFilePath)
+	stations := make(map[string]interface{})
+	for request := range in {
+		if request.TargetSsid == "" {
+			// unable to identify station
+			continue
 		}
-		done <- true
-	}()
-	return done
+
+		// check if station was already identified:
+		if stationI, exists := stations[request.TargetSsid]; exists {
+			station, _ := stationI.(Station)
+			station.KnownDevices.Add(request.SourceMac)
+		} else {
+			station := Station{
+				SSID:         request.TargetSsid,
+				KnownDevices: &Set{},
+			}
+			station.KnownDevices.Add(request.SourceMac)
+			stations[request.TargetSsid] = station
+		}
+	}
+	return stations
+}
+
+func AggregateDevices(requestFilePath string) map[string]interface{} {
+	in := ParseRequests(requestFilePath)
+	devices := make(map[string]interface{})
+	for request := range in {
+		// check if device was already identified:
+		if deviceI, exists := devices[request.SourceMac]; exists {
+			device, _ := deviceI.(Device)
+			// update LastSeenDts:
+			if device.LastSeenDts.Time.Before(request.CaptureDts.Time) {
+				device.LastSeenDts = request.CaptureDts
+			}
+			// update KnownSsids:
+			device.KnownSsids.Add(request.TargetSsid)
+		} else {
+			device := Device{
+				DeviceMac:   request.SourceMac,
+				LastSeenDts: request.CaptureDts,
+				KnownSsids:  &Set{},
+			}
+			device.KnownSsids.Add(request.TargetSsid)
+			devices[request.SourceMac] = device
+		}
+	}
+	return devices
 }
