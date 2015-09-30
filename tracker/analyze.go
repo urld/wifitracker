@@ -10,7 +10,7 @@ import (
 )
 
 const jsonTimeFmt string = "2006-01-02 15:04:05.000000"
-const bufferFactor int = 100
+const bufferFactor int = 1000
 
 // A Set is a unordered collection of unique string elements.
 type Set struct {
@@ -51,7 +51,7 @@ func (t *JSONTime) UnmarshalJSON(b []byte) (err error) {
 		b = b[1 : len(b)-1]
 	}
 	t.Time, err = time.Parse(jsonTimeFmt, string(b))
-	return
+	return err
 }
 
 // MarshalJSON returns the JSON encoding of the JSONTime value.
@@ -90,7 +90,7 @@ type Station struct {
 }
 
 func readRequestJSONs(requestFilePath string) <-chan []byte {
-	out := make(chan []byte, runtime.NumCPU()*100)
+	out := make(chan []byte, bufferFactor)
 
 	go func() {
 		f, err := os.Open(requestFilePath)
@@ -129,8 +129,7 @@ func parseRequestJSONs(in <-chan []byte) <-chan *Request {
 
 func merge(cs ...<-chan *Request) <-chan *Request {
 	var wg sync.WaitGroup
-	out := make(chan *Request, bufferFactor*runtime.NumCPU())
-
+	out := make(chan *Request, bufferFactor)
 	// Start an output goroutine for each input channel in cs.  output
 	// copies values from c to out until c is closed, then calls wg.Done.
 	output := func(c <-chan *Request) {
