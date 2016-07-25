@@ -19,16 +19,17 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"os"
+
 	"github.com/docopt/docopt-go"
 	"github.com/durl/go-wifi-tracker/sniffer"
 	"github.com/durl/go-wifi-tracker/tracker"
-	"os"
 )
 
 const Version string = "0.1.0"
-const requestFilePath string = "/var/opt/wifi-tracker/requests"
 
 func printEntities(entities map[string]interface{}) {
 	for _, entity := range entities {
@@ -73,11 +74,12 @@ Commands:
 
 	// read arguments:
 	if args["show"].(bool) {
+		input := bufio.NewReader(os.Stdin)
 		if args["devices"].(bool) {
-			devices := tracker.AggregateDevices(requestFilePath)
+			devices := tracker.AggregateDevices(input)
 			printEntities(devices)
 		} else if args["stations"].(bool) {
-			stations := tracker.AggregateStations(requestFilePath)
+			stations := tracker.AggregateStations(input)
 			printEntities(stations)
 		} else if args["aliases"].(bool) {
 			fmt.Println("not implemented")

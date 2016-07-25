@@ -3,13 +3,12 @@ package tracker
 import (
 	"bufio"
 	"encoding/json"
-	"os"
+	"io"
 	"runtime"
 	"sync"
 	"time"
 )
 
-const jsonTimeFmt string = "2006-01-02 15:04:05.000000"
 const bufferFactor int = 1000
 
 // A Set is a unordered collection of unique string elements.
@@ -40,45 +39,12 @@ func (s *Set) MarshalJSON() ([]byte, error) {
 	return setJSON, err
 }
 
-// JSONTime is a wrapper around time.Time to enable JSON Un-/Marshalling.
-type JSONTime struct {
-	time.Time
-}
-
-// UnmarshalJSON parses the JSON-encoded datetime stamp.
-func (t *JSONTime) UnmarshalJSON(b []byte) (err error) {
-	if b[0] == '"' && b[len(b)-1] == '"' {
-		b = b[1 : len(b)-1]
-	}
-	t.Time, err = time.Parse(jsonTimeFmt, string(b))
-	return err
-}
-
-// MarshalJSON returns the JSON encoding of the JSONTime value.
-func (t *JSONTime) MarshalJSON() ([]byte, error) {
-	return []byte(t.Time.Format(jsonTimeFmt)), nil
-}
-
-// A Request struct represents a captured IEEE 802.11 probe request.
-type Request struct {
-	SourceMac      string   `json:"source_mac"`
-	CaptureDts     JSONTime `json:"capture_dts"`
-	TargetSsid     string   `json:"target_ssid"`
-	SignalStrength int      `json:"signal_strength"`
-}
-
-func parseRequest(requestJSON []byte) (Request, error) {
-	var request Request
-	err := json.Unmarshal(requestJSON, &request)
-	return request, err
-}
-
 // A Device struct represents a IEEE 802.11 device which was actively scanning for access points.
 type Device struct {
 	DeviceMac     string
 	Alias         *string
 	KnownSsids    *Set
-	LastSeenDts   JSONTime
+	LastSeenDts   time.Time
 	VendorCompany *string
 	VendorCountry *string
 }
@@ -89,17 +55,12 @@ type Station struct {
 	KnownDevices *Set
 }
 
-func readRequestJSONs(requestFilePath string) <-chan []byte {
+func readRequestJSONs(input io.Reader) <-chan []byte {
 	out := make(chan []byte, bufferFactor)
 
 	go func() {
-		f, err := os.Open(requestFilePath)
-		if err != nil {
-			return
-		}
-		defer f.Close()
 		defer close(out)
-		scanner := bufio.NewScanner(f)
+		scanner := bufio.NewScanner(input)
 		for scanner.Scan() {
 			// copy scan result because it may get overwritten by the next scan result:
 			var line []byte
@@ -118,6 +79,7 @@ func parseRequestJSONs(in <-chan []byte) <-chan *Request {
 		for requestJSON := range in {
 			request, err := parseRequest(requestJSON)
 			if err != nil {
+				// ignore erroneus requests
 				continue
 			}
 			out <- &request
@@ -152,8 +114,8 @@ func merge(cs ...<-chan *Request) <-chan *Request {
 	return out
 }
 
-func ParseRequests(requestFilePath string) <-chan *Request {
-	requestJSONs := readRequestJSONs(requestFilePath)
+func ParseRequests(input io.Reader) <-chan *Request {
+	requestJSONs := readRequestJSONs(input)
 	var requestParsers []<-chan *Request
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
 		requests := parseRequestJSONs(requestJSONs)
@@ -162,8 +124,8 @@ func ParseRequests(requestFilePath string) <-chan *Request {
 	return merge(requestParsers...)
 }
 
-func AggregateStations(requestFilePath string) map[string]interface{} {
-	in := ParseRequests(requestFilePath)
+func AggregateStations(input io.Reader) map[string]interface{} {
+	in := ParseRequests(input)
 	stations := make(map[string]interface{})
 	for request := range in {
 		if request.TargetSsid == "" {
@@ -187,15 +149,15 @@ func AggregateStations(requestFilePath string) map[string]interface{} {
 	return stations
 }
 
-func AggregateDevices(requestFilePath string) map[string]interface{} {
-	in := ParseRequests(requestFilePath)
+func AggregateDevices(input io.Reader) map[string]interface{} {
+	in := ParseRequests(input)
 	devices := make(map[string]interface{})
 	for request := range in {
 		// check if device was already identified:
 		if deviceI, exists := devices[request.SourceMac]; exists {
 			device, _ := deviceI.(Device)
 			// update LastSeenDts:
-			if device.LastSeenDts.Time.Before(request.CaptureDts.Time) {
+			if device.LastSeenDts.Before(request.CaptureDts) {
 				device.LastSeenDts = request.CaptureDts
 			}
 			// update KnownSsids:

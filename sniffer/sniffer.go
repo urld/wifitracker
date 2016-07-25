@@ -1,11 +1,14 @@
 package sniffer
 
 import (
+	"encoding/json"
 	"fmt"
+	"time"
+
+	"github.com/durl/go-wifi-tracker/tracker"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"time"
 )
 
 // A ProbeRequest struct represents a captured IEEE 802.11 probe request packet.
@@ -55,7 +58,10 @@ func handlePacket(packet gopacket.Packet) {
 				dot11r, _ := l1.(*layers.RadioTap)
 				probeRequest.RSSI = dot11r.DBMAntennaSignal
 			}
-			fmt.Println(probeRequest)
+			rq := tracker.Request{CaptureDts: probeRequest.CaptureDTS, SignalStrength: 0, SourceMac: probeRequest.MAC, TargetSsid: probeRequest.SSID}
+			b, _ := json.Marshal(rq)
+			// print request to stdout:
+			fmt.Println(string(b))
 		}
 	}
 }
