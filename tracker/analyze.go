@@ -1,3 +1,7 @@
+// Copyright (c) 2016, David Url
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package tracker
 
 import (
@@ -7,6 +11,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/durl/wifitracker"
 )
 
 const bufferFactor int = 1000
@@ -71,13 +77,13 @@ func readRequestJSONs(input io.Reader) <-chan []byte {
 	return out
 }
 
-func parseRequestJSONs(in <-chan []byte) <-chan *Request {
-	out := make(chan *Request, bufferFactor)
+func parseRequestJSONs(in <-chan []byte) <-chan *wifitracker.Request {
+	out := make(chan *wifitracker.Request, bufferFactor)
 
 	go func() {
 		defer close(out)
 		for requestJSON := range in {
-			request, err := parseRequest(requestJSON)
+			request, err := wifitracker.ParseRequest(requestJSON)
 			if err != nil {
 				// ignore erroneus requests
 				continue
@@ -89,12 +95,12 @@ func parseRequestJSONs(in <-chan []byte) <-chan *Request {
 	return out
 }
 
-func merge(cs ...<-chan *Request) <-chan *Request {
+func merge(cs ...<-chan *wifitracker.Request) <-chan *wifitracker.Request {
 	var wg sync.WaitGroup
-	out := make(chan *Request, bufferFactor)
+	out := make(chan *wifitracker.Request, bufferFactor)
 	// Start an output goroutine for each input channel in cs.  output
 	// copies values from c to out until c is closed, then calls wg.Done.
-	output := func(c <-chan *Request) {
+	output := func(c <-chan *wifitracker.Request) {
 		for n := range c {
 			out <- n
 		}
@@ -114,9 +120,9 @@ func merge(cs ...<-chan *Request) <-chan *Request {
 	return out
 }
 
-func ParseRequests(input io.Reader) <-chan *Request {
+func ParseRequests(input io.Reader) <-chan *wifitracker.Request {
 	requestJSONs := readRequestJSONs(input)
-	var requestParsers []<-chan *Request
+	var requestParsers []<-chan *wifitracker.Request
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
 		requests := parseRequestJSONs(requestJSONs)
 		requestParsers = append(requestParsers, requests)

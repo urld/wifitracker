@@ -1,3 +1,7 @@
+// Copyright (c) 2016, David Url
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package sniffer
 
 import (
@@ -5,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/durl/go-wifi-tracker/tracker"
+	"github.com/durl/wifitracker"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -58,7 +62,7 @@ func handlePacket(packet gopacket.Packet) {
 				dot11r, _ := l1.(*layers.RadioTap)
 				probeRequest.RSSI = dot11r.DBMAntennaSignal
 			}
-			rq := tracker.Request{CaptureDts: probeRequest.CaptureDTS, SignalStrength: 0, SourceMac: probeRequest.MAC, TargetSsid: probeRequest.SSID}
+			rq := wifitracker.Request{CaptureDts: probeRequest.CaptureDTS, SignalStrength: 0, SourceMac: probeRequest.MAC, TargetSsid: probeRequest.SSID}
 			b, _ := json.Marshal(rq)
 			// print request to stdout:
 			fmt.Println(string(b))

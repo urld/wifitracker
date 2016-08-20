@@ -1,7 +1,3 @@
-[submodule "docopt-go"]
-        path = vendor/github.com/docopt/docopt-go
-        url = https://github.com/docopt/docopt-go
-
 [submodule "gopacket"]
         path = vendor/github.com/google/gopacket
         url = https://github.com/google/gopacket

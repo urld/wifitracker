@@ -1,11 +1,13 @@
-package tracker
+// Copyright (c) 2016, David Url
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package wifitracker
 
 import (
 	"encoding/json"
 	"time"
 )
-
-// JSONTime is a wrapper around time.Time to enable JSON Un-/Marshalling.
 
 // A Request struct represents a captured IEEE 802.11 probe request.
 type Request struct {
@@ -15,7 +17,8 @@ type Request struct {
 	SignalStrength int       `json:"signal_strength"`
 }
 
-func parseRequest(requestJSON []byte) (Request, error) {
+// ParseRequest parses a request in json format.
+func ParseRequest(requestJSON []byte) (Request, error) {
 	var request Request
 	err := json.Unmarshal(requestJSON, &request)
 	return request, err
