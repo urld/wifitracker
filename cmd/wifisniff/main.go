@@ -5,21 +5,46 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
+	"github.com/durl/wifitracker"
 	"github.com/durl/wifitracker/sniffer"
 )
 
-const usage = "usage: sniffer <interface>"
+const usage = "usage: wifisniff <interface>"
+
+func exit(err error) {
+	fmt.Fprintln(os.Stderr, err.Error())
+	os.Exit(1)
+}
+
+func exitUsage() {
+	fmt.Fprintln(os.Stderr, usage)
+	os.Exit(2)
+}
 
 func main() {
 
 	if len(os.Args) != 2 {
-		fmt.Println(usage)
-		os.Exit(2)
+		exitUsage()
 	}
 	iface := os.Args[1]
 
-	sniffer.Sniff(iface)
+	handle, err := sniffer.Setup(iface)
+	if err != nil {
+		exit(err)
+	}
+	requests := sniffer.Sniff(handle)
+
+	printRequests(requests)
+}
+
+func printRequests(rqs <-chan wifitracker.Request) {
+	for rq := range rqs {
+		rqJson, _ := json.Marshal(rq)
+		// ignore marshalling errors
+		fmt.Println(string(rqJson))
+	}
 }

@@ -1,5 +1,14 @@
 #!/bin/sh
 
+usage(){
+        echo "usage: monitor.sh start|stop <iface>"
+        exit 2
+}
+
+if [ "$#" -ne 2 ]; then
+    usage
+fi
+
 case "$1" in
     "start")
         service network-manager stop
@@ -14,6 +23,7 @@ case "$1" in
         service network-manager start
         ;;
     *)
-        echo "usage: monitor.sh start|stop <iface>"
+        usage
         ;;
 esac
+
