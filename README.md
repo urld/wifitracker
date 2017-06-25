@@ -3,6 +3,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/urld/wifitracker)](https://goreportcard.com/report/github.com/urld/wifitracker)
 [![GoDoc](https://godoc.org/github.com/urld/wifitracker?status.svg)](https://godoc.org/github.com/urld/wifitracker)
 
+This is a golang port of [py-wifi-tracker](https://github.com/urld/py-wifi-tracker).
 
 ## Usage
 
