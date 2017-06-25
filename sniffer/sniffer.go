@@ -7,7 +7,7 @@ package sniffer
 import (
 	"time"
 
-	"github.com/durl/wifitracker"
+	"github.com/urld/wifitracker"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"

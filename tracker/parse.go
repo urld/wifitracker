@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/durl/wifitracker"
+	"github.com/urld/wifitracker"
 )
 
 const bufferFactor int = 1000

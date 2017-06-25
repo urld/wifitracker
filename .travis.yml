@@ -1,0 +1,16 @@
+language: go
+
+go:
+  - 1.x
+  - master
+
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y libpcap0.8 libpcap0.8-dev
+
+install:
+  - go get -t -v ./...
+  - go install -v ./...
+
+script:
+  - go test -v ./...

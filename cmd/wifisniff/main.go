@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/durl/wifitracker"
-	"github.com/durl/wifitracker/sniffer"
+	"github.com/urld/wifitracker"
+	"github.com/urld/wifitracker/sniffer"
 )
 
 const usage = "usage: wifisniff <interface>"
@@ -43,8 +43,8 @@ func main() {
 
 func printRequests(rqs <-chan wifitracker.Request) {
 	for rq := range rqs {
-		rqJson, _ := json.Marshal(rq)
+		rqJSON, _ := json.Marshal(rq)
 		// ignore marshalling errors
-		fmt.Println(string(rqJson))
+		fmt.Println(string(rqJSON))
 	}
 }

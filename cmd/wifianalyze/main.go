@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/durl/wifitracker/tracker"
+	"github.com/urld/wifitracker/tracker"
 )
 
 const usage = "usage: wifianalyze devices|stations"
